@@ -7,33 +7,37 @@ This module contains Flask routes for handling Brent oil price data endpoints.
 from flask import Blueprint, jsonify, request
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
+from ..utils.data_loader import load_and_preprocess_data
 
 price_bp = Blueprint('price', __name__, url_prefix='/api/data')
+
+# Load data once when the blueprint is registered
+file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'raw', 'BrentOilPrices.csv')
+data = load_and_preprocess_data(file_path)
 
 @price_bp.route('/summary', methods=['GET'])
 def get_data_summary():
     """Get summary statistics for the price data."""
     try:
-        # Mock data - in real implementation, load from processed data
         summary = {
-            'data_points': 5000,
+            'data_points': len(data),
             'date_range': {
-                'start': '2010-01-01',
-                'end': '2024-01-01'
+                'start': data['Date'].min().strftime('%Y-%m-%d'),
+                'end': data['Date'].max().strftime('%Y-%m-%d')
             },
             'price_range': {
-                'min': 20.50,
-                'max': 140.50
+                'min': data['Price'].min(),
+                'max': data['Price'].max()
             },
             'price_stats': {
-                'mean': 75.30,
-                'std': 25.40,
-                'median': 70.20
+                'mean': data['Price'].mean(),
+                'std': data['Price'].std(),
+                'median': data['Price'].median()
             },
-            'missing_values': 0,
-            'completeness': 100.0,
+            'missing_values': data.isnull().sum().sum(),
+            'completeness': 100.0 - (data.isnull().sum().sum() / len(data)) * 100,
             'last_updated': datetime.now().isoformat()
         }
         
@@ -45,29 +49,7 @@ def get_data_summary():
 def get_price_series():
     """Get the complete price series data."""
     try:
-        # Mock data - in real implementation, load from processed data
-        start_date = datetime(2020, 1, 1)
-        dates = [start_date + timedelta(days=i) for i in range(100)]
-        
-        # Generate mock price data with some volatility
-        np.random.seed(42)
-        base_price = 70.0
-        prices = []
-        for i in range(100):
-            # Add some trend and volatility
-            trend = 0.1 * np.sin(i / 10)  # Cyclical trend
-            noise = np.random.normal(0, 2)  # Random noise
-            price = base_price + trend + noise
-            prices.append(max(20, price))  # Ensure positive prices
-        
-        price_data = [
-            {
-                'date': date.strftime('%Y-%m-%d'),
-                'price': round(price, 2)
-            }
-            for date, price in zip(dates, prices)
-        ]
-        
+        price_data = data[['Date', 'Price']].to_dict(orient='records')
         return jsonify(price_data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -82,17 +64,17 @@ def get_price_range():
         if not start_date or not end_date:
             return jsonify({'error': 'start_date and end_date parameters are required'}), 400
         
-        # Mock implementation - filter data by date range
-        # In real implementation, load and filter actual data
+        filtered_data = data[(data['Date'] >= start_date) & (data['Date'] <= end_date)]
         
         return jsonify({
             'start_date': start_date,
             'end_date': end_date,
-            'data_points': 100,
+            'data_points': len(filtered_data),
             'price_range': {
-                'min': 65.20,
-                'max': 85.40
-            }
+                'min': filtered_data['Price'].min(),
+                'max': filtered_data['Price'].max()
+            },
+            'data': filtered_data[['Date', 'Price']].to_dict(orient='records')
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -101,24 +83,26 @@ def get_price_range():
 def get_statistics():
     """Get detailed statistical analysis of the price data."""
     try:
-        # Mock statistical analysis
+        log_returns = np.log(data['Price'] / data['Price'].shift(1)).dropna()
+        
         stats = {
             'descriptive_stats': {
-                'mean': 75.30,
-                'median': 70.20,
-                'std': 25.40,
-                'skewness': 0.15,
-                'kurtosis': 2.8
+                'mean': data['Price'].mean(),
+                'median': data['Price'].median(),
+                'std': data['Price'].std(),
+                'skewness': data['Price'].skew(),
+                'kurtosis': data['Price'].kurt()
             },
             'volatility_analysis': {
-                'daily_volatility': 2.1,
-                'annualized_volatility': 0.33,
-                'volatility_clusters': True
+                'daily_volatility': log_returns.std(),
+                'annualized_volatility': log_returns.std() * np.sqrt(252),
+                'volatility_clusters': True  # This would require a more complex model to determine
             },
             'trend_analysis': {
-                'overall_trend': 'increasing',
-                'trend_strength': 0.65,
-                'seasonality': True
+                'overall_trend': 'increasing' if data['Price'].iloc[-1] > data['Price'].iloc[0] else 'decreasing',
+                # A simple measure of trend strength
+                'trend_strength': (data['Price'].iloc[-1] - data['Price'].iloc[0]) / data['Price'].iloc[0],
+                'seasonality': False # This would require a more complex model to determine
             }
         }
         
