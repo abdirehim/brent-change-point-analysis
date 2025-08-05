@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { PlayArrow, Refresh } from '@mui/icons-material';
 import { apiService } from '../services/apiService';
+import Plot from 'react-plotly.js';
 
 const ModelAnalysis = () => {
   const [loading, setLoading] = useState(true);
@@ -27,6 +28,8 @@ const ModelAnalysis = () => {
   const [modelStatus, setModelStatus] = useState(null);
   const [changePoints, setChangePoints] = useState(null);
   const [segments, setSegments] = useState(null);
+  const [priceSeries, setPriceSeries] = useState(null); // To fetch price series for plotting
+  const [eventCoefficients, setEventCoefficients] = useState(null); // To fetch event coefficients
 
   useEffect(() => {
     fetchModelData();
@@ -35,14 +38,18 @@ const ModelAnalysis = () => {
   const fetchModelData = async () => {
     try {
       setLoading(true);
-      const [status, changepoints, segmentData] = await Promise.all([
+      const [status, changepoints, segmentData, priceData, coefficientsData] = await Promise.all([
         apiService.getModelStatus(),
         apiService.getChangePoints(),
         apiService.getSegments(),
+        apiService.getPriceSeries(), // Fetch price series
+        apiService.getEventCoefficients(), // Fetch event coefficients
       ]);
       setModelStatus(status);
-      setChangePoints(changepoints);
-      setSegments(segmentData);
+      setChangePoints(changepoints.changepoints);
+      setSegments(segmentData.segments);
+      setPriceSeries(priceData); // Set price series data
+      setEventCoefficients(coefficientsData.coefficients); // Set event coefficients
     } catch (err) {
       setError('Failed to load model data');
       console.error(err);
@@ -64,6 +71,117 @@ const ModelAnalysis = () => {
       setRunning(false);
     }
   };
+
+  // Plotly data for Price Series with Change Points
+  const getPriceSeriesPlotData = () => {
+    if (!priceSeries || !changePoints) return [];
+
+    const priceTrace = {
+      x: priceSeries.map(d => d.date),
+      y: priceSeries.map(d => d.price),
+      mode: 'lines',
+      name: 'Brent Oil Price',
+      line: { color: '#1976d2' },
+    };
+
+    const cpTraces = changePoints.map((cp, index) => ({
+      x: [cp.date, cp.date],
+      y: [Math.min(...priceSeries.map(d => d.price)), Math.max(...priceSeries.map(d => d.price))],
+      mode: 'lines',
+      name: `Change Point ${index + 1}`,
+      line: { color: 'red', dash: 'dashdot', width: 1 },
+      hoverinfo: 'text',
+      text: `Change Point ${index + 1}<br>Date: ${cp.date}<br>HDI: ${cp.hdi_lower_date} - ${cp.hdi_upper_date}`,
+    }));
+
+    return [priceTrace, ...cpTraces];
+  };
+
+  const getPriceSeriesPlotLayout = () => ({
+    title: 'Brent Oil Price with Detected Change Points',
+    xaxis: { title: 'Date' },
+    yaxis: { title: 'Price (USD)' },
+    hovermode: 'closest',
+    height: 400,
+    margin: { t: 50, b: 50, l: 50, r: 50 },
+  });
+
+  // Plotly data for Segment Characteristics
+  const getSegmentCharacteristicsPlotData = () => {
+    if (!segments) return [];
+
+    const segmentLabels = segments.map((s, index) => `Segment ${s.id}`);
+    const meanReturns = segments.map(s => s.mean_log_return);
+    const volatilities = segments.map(s => s.volatility);
+
+    const meanReturnTrace = {
+      x: segmentLabels,
+      y: meanReturns,
+      type: 'bar',
+      name: 'Mean Log Return',
+      marker: { color: '#4CAF50' },
+    };
+
+    const volatilityTrace = {
+      x: segmentLabels,
+      y: volatilities,
+      type: 'bar',
+      name: 'Volatility',
+      marker: { color: '#FFC107' },
+      yaxis: 'y2', // Use a secondary y-axis for volatility
+    };
+
+    return [meanReturnTrace, volatilityTrace];
+  };
+
+  const getSegmentCharacteristicsPlotLayout = () => ({
+    title: 'Segment Mean Log Returns and Volatility',
+    xaxis: { title: 'Segment' },
+    yaxis: { title: 'Mean Log Return' },
+    yaxis2: { // Secondary y-axis for volatility
+      title: 'Volatility',
+      overlaying: 'y',
+      side: 'right',
+    },
+    barmode: 'group',
+    height: 400,
+    margin: { t: 50, b: 50, l: 50, r: 50 },
+  });
+
+  // Plotly data for Event Coefficients
+  const getEventCoefficientsPlotData = () => {
+    if (!eventCoefficients) return [];
+
+    const features = eventCoefficients.map(c => c.feature);
+    const means = eventCoefficients.map(c => c.mean);
+    const hdiLowers = eventCoefficients.map(c => c.hdi_lower);
+    const hdiUppers = eventCoefficients.map(c => c.hdi_upper);
+
+    const errorBars = {
+      type: 'data',
+      array: hdiUppers.map((upper, i) => upper - means[i]),
+      arrayminus: means.map((mean, i) => mean - hdiLowers[i]),
+    };
+
+    return [
+      {
+        x: features,
+        y: means,
+        type: 'bar',
+        name: 'Event Coefficients',
+        marker: { color: '#9C27B0' },
+        error_y: errorBars,
+      },
+    ];
+  };
+
+  const getEventCoefficientsPlotLayout = () => ({
+    title: 'Event Coefficients with 94% HDI',
+    xaxis: { title: 'Event Feature' },
+    yaxis: { title: 'Coefficient Value' },
+    height: 400,
+    margin: { t: 50, b: 50, l: 50, r: 50 },
+  });
 
   if (loading) {
     return (
@@ -116,8 +234,8 @@ const ModelAnalysis = () => {
               </Typography>
               <Box sx={{ mb: 2 }}>
                 <Chip
-                  label={modelStatus?.status || 'Unknown'}
-                  color={modelStatus?.status === 'ready' ? 'success' : 'warning'}
+                  label={modelStatus?.models_fitted ? 'Fitted' : 'Not Fitted'}
+                  color={modelStatus?.models_fitted ? 'success' : 'warning'}
                   sx={{ mb: 1 }}
                 />
               </Box>
@@ -125,16 +243,35 @@ const ModelAnalysis = () => {
                 Last run: {modelStatus?.last_run || 'N/A'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                WAIC Score: {modelStatus?.waic_score || 'N/A'}
+                WAIC Score (Event Model): {modelStatus?.waic_comparison?.event_waic?.toFixed(2) || 'N/A'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Convergence: {modelStatus?.convergence || 'N/A'}
+                Preferred Model: {modelStatus?.waic_comparison?.preferred_model || 'N/A'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                R-hat Max: {modelStatus?.convergence?.r_hat_max?.toFixed(3) || 'N/A'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                ESS Min: {modelStatus?.convergence?.effective_sample_size_min || 'N/A'}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         <Grid item xs={12} md={8}>
+          <Card>
+            <CardContent>
+              <Plot
+                data={getPriceSeriesPlotData()}
+                layout={getPriceSeriesPlotLayout()}
+                style={{ width: '100%', height: '100%' }}
+                useResizeHandler={true}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -144,19 +281,21 @@ const ModelAnalysis = () => {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
+                      <TableCell>ID</TableCell>
                       <TableCell>Date</TableCell>
-                      <TableCell align="right">Probability</TableCell>
-                      <TableCell align="right">HDI Lower</TableCell>
-                      <TableCell align="right">HDI Upper</TableCell>
+                      <TableCell align="right">Time Index</TableCell>
+                      <TableCell>HDI Lower Date</TableCell>
+                      <TableCell>HDI Upper Date</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {changePoints?.map((cp, index) => (
-                      <TableRow key={index}>
+                    {changePoints?.map((cp) => (
+                      <TableRow key={cp.id}>
+                        <TableCell>{cp.id}</TableCell>
                         <TableCell>{cp.date}</TableCell>
-                        <TableCell align="right">{(cp.probability * 100).toFixed(1)}%</TableCell>
-                        <TableCell align="right">{cp.hdi_lower}</TableCell>
-                        <TableCell align="right">{cp.hdi_upper}</TableCell>
+                        <TableCell align="right">{cp.time_index}</TableCell>
+                        <TableCell>{cp.hdi_lower_date}</TableCell>
+                        <TableCell>{cp.hdi_upper_date}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -169,36 +308,56 @@ const ModelAnalysis = () => {
         <Grid item xs={12}>
           <Card>
             <CardContent>
+              <Plot
+                data={getSegmentCharacteristicsPlotData()}
+                layout={getSegmentCharacteristicsPlotLayout()}
+                style={{ width: '100%', height: '100%' }}
+                useResizeHandler={true}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Plot
+                data={getEventCoefficientsPlotData()}
+                layout={getEventCoefficientsPlotLayout()}
+                style={{ width: '100%', height: '100%' }}
+                useResizeHandler={true}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
               <Typography variant="h6" gutterBottom>
-                Segment Characteristics
+                Segment Characteristics (Table)
               </Typography>
               <TableContainer component={Paper} variant="outlined">
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Segment</TableCell>
-                      <TableCell align="right">Start Date</TableCell>
-                      <TableCell align="right">End Date</TableCell>
-                      <TableCell align="right">Mean Price</TableCell>
+                      <TableCell>Segment ID</TableCell>
+                      <TableCell>Start Date</TableCell>
+                      <TableCell>End Date</TableCell>
+                      <TableCell align="right">Duration (Days)</TableCell>
+                      <TableCell align="right">Mean Log Return</TableCell>
                       <TableCell align="right">Volatility</TableCell>
-                      <TableCell align="right">Trend</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {segments?.map((segment, index) => (
-                      <TableRow key={index}>
-                        <TableCell>Segment {index + 1}</TableCell>
-                        <TableCell align="right">{segment.start_date}</TableCell>
-                        <TableCell align="right">{segment.end_date}</TableCell>
-                        <TableCell align="right">${segment.mean_price?.toFixed(2)}</TableCell>
-                        <TableCell align="right">{segment.volatility?.toFixed(3)}</TableCell>
-                        <TableCell align="right">
-                          <Chip
-                            label={segment.trend}
-                            color={segment.trend === 'increasing' ? 'success' : 'error'}
-                            size="small"
-                          />
-                        </TableCell>
+                    {segments?.map((segment) => (
+                      <TableRow key={segment.id}>
+                        <TableCell>{segment.id}</TableCell>
+                        <TableCell>{segment.start_date}</TableCell>
+                        <TableCell>{segment.end_date}</TableCell>
+                        <TableCell align="right">{segment.duration_days}</TableCell>
+                        <TableCell align="right">{segment.mean_log_return?.toFixed(5)}</TableCell>
+                        <TableCell align="right">{segment.volatility?.toFixed(5)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -212,4 +371,4 @@ const ModelAnalysis = () => {
   );
 };
 
-export default ModelAnalysis; 
+export default ModelAnalysis;
