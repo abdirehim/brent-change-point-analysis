@@ -102,17 +102,47 @@ brent-change-point-analysis/
 - Historical event data (wars, sanctions, OPEC decisions)
 - Economic indicators (GDP, exchange rates)
 
+## Documentation
+
+- [API Documentation](API.md) - Complete API reference
+- [Configuration Guide](CONFIGURATION.md) - Setup and configuration options
+- [Data Documentation](data/README.md) - Data format and requirements
+- [Model Documentation](modeling/README.md) - Model specifications and usage
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Import errors**: Ensure all dependencies are installed via `conda env create -f environment.yml`
+2. **Data loading errors**: Check file paths and data format requirements
+3. **Model convergence**: Increase MCMC samples or tuning steps
+4. **Memory issues**: Reduce data size or model complexity
+
+### Performance Optimization
+
+- Use fewer MCMC samples for development (500-1000)
+- Enable parallel processing with multiple chains
+- Cache model results to avoid re-computation
+
 ## Contributing
 
 1. Create a feature branch
 2. Make your changes
 3. Add tests if applicable
-4. Submit a pull request
+4. Update documentation
+5. Submit a pull request
+
+## Security
+
+This project includes security improvements:
+- Input validation and sanitization
+- Error handling for all API endpoints
+- Safe data serialization practices
 
 ## License
 
-[Add your license information here]
+MIT License - See LICENSE file for details
 
 ## Contact
 
-[Add contact information here] 
+For questions or support, please open an issue on the repository. 

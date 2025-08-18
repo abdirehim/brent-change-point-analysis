@@ -13,6 +13,7 @@ import pickle
 import os
 from datetime import datetime
 import sys
+import logging
 
 # Add parent directory to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -51,11 +52,11 @@ def load_data():
         # Initialize model runner
         model_runner = ModelRunner(data_path)
         
-        print("Data and models loaded successfully")
+        logging.info("Data and models loaded successfully")
         return True
         
     except Exception as e:
-        print(f"Error loading data: {e}")
+        logging.error(f"Error loading data: {e}")
         return False
 
 @app.route('/api/health', methods=['GET'])
@@ -336,18 +337,21 @@ def get_correlation_analysis():
         if feature in data.columns:
             corr = data['Returns'].corr(data[feature])
             correlations[feature] = {
-                'correlation': float(corr),
-                'abs_correlation': float(abs(corr)),
-                'significant': abs(corr) > 0.05
+                'correlation': float(corr) if not pd.isna(corr) else 0.0,
+                'abs_correlation': float(abs(corr)) if not pd.isna(corr) else 0.0,
+                'significant': abs(corr) > 0.1 if not pd.isna(corr) else False
             }
     
     return jsonify({'correlations': correlations})
 
 if __name__ == '__main__':
+    # Configure logging
+    logging.basicConfig(level=logging.INFO)
+    
     # Load data on startup
     if load_data():
-        print("Starting Flask server...")
+        logging.info("Starting Flask server...")
         app.run(debug=True, host='0.0.0.0', port=5000)
     else:
-        print("Failed to load data. Exiting.")
+        logging.error("Failed to load data. Exiting.")
         exit(1) 
