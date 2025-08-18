@@ -11,12 +11,19 @@ def load_and_preprocess_data(file_path):
     Returns:
         pd.DataFrame: The preprocessed data with log returns and volatility.
     """
-    df = pd.read_csv(file_path)
-    df['Date'] = pd.to_datetime(df['Date'], format='mixed')
-    df = df.sort_values(by='Date').reset_index(drop=True)
+    try:
+        df = pd.read_csv(file_path)
+        if 'Date' not in df.columns or 'Price' not in df.columns:
+            raise ValueError("Required columns 'Date' and 'Price' not found in data")
+        df['Date'] = pd.to_datetime(df['Date'], format='mixed')
+        df = df.sort_values(by='Date').reset_index(drop=True)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Data file not found: {file_path}")
+    except Exception as e:
+        raise ValueError(f"Error loading data: {str(e)}")
     
     # Handle missing values, if any
-    df['Price'] = df['Price'].fillna(method='ffill')
+    df['Price'] = df['Price'].ffill()
     
     # Calculate log returns
     df['log_price'] = np.log(df['Price'])

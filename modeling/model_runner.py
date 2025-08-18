@@ -30,6 +30,11 @@ class BrentChangePointModel:
         n_changepoints : int
             Number of change points to detect
         """
+        if n_changepoints <= 0:
+            raise ValueError("n_changepoints must be a positive integer")
+        if n_changepoints > len(data) // 10:
+            raise ValueError(f"n_changepoints ({n_changepoints}) too large for data size ({len(data)})")
+        
         self.data = data
         self.n_changepoints = n_changepoints
         self.model = None
@@ -106,7 +111,7 @@ class BasicChangePointModel(BrentChangePointModel):
             changepoint_probs = pm.Beta('changepoint_probs', alpha=1, beta=1, 
                                       shape=self.n_changepoints)
             changepoints = pm.Deterministic('changepoints', 
-                                          (changepoint_probs * (n-1)).astype(int))
+                                          pm.math.cast(pm.math.round(changepoint_probs * (n-1)), 'int32'))
             
             # Sort change points to ensure chronological order
             changepoints_sorted = pm.Deterministic('changepoints_sorted', 
@@ -163,7 +168,7 @@ class EventCovariateModel(BrentChangePointModel):
             changepoint_probs = pm.Beta('changepoint_probs', alpha=1, beta=1, 
                                       shape=self.n_changepoints)
             changepoints = pm.Deterministic('changepoints', 
-                                          (changepoint_probs * (n-1)).astype(int))
+                                          pm.math.cast(pm.math.round(changepoint_probs * (n-1)), 'int32'))
             changepoints_sorted = pm.Deterministic('changepoints_sorted', 
                                                  pm.math.sort(changepoints))
             

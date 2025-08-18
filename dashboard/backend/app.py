@@ -41,8 +41,12 @@ def load_data():
         # Load model results if available
         results_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'processed', 'model_results.pkl')
         if os.path.exists(results_path):
-            with open(results_path, 'rb') as f:
-                model_results = pickle.load(f)
+            try:
+                with open(results_path, 'rb') as f:
+                    model_results = pickle.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load model results: {e}")
+                model_results = None
         
         # Initialize model runner
         model_runner = ModelRunner(data_path)
@@ -70,27 +74,36 @@ def get_data_summary():
     if data is None:
         return jsonify({'error': 'Data not loaded'}), 500
     
-    summary = {
-        'total_observations': len(data),
-        'date_range': {
-            'start': data['Date'].min().isoformat(),
-            'end': data['Date'].max().isoformat()
-        },
-        'columns': list(data.columns),
-        'missing_values': data.isnull().sum().to_dict(),
-        'price_stats': {
-            'mean': float(data['Close'].mean()),
-            'std': float(data['Close'].std()),
-            'min': float(data['Close'].min()),
-            'max': float(data['Close'].max())
-        },
-        'returns_stats': {
-            'mean': float(data['Returns'].mean()),
-            'std': float(data['Returns'].std()),
-            'min': float(data['Returns'].min()),
-            'max': float(data['Returns'].max())
+    try:
+        summary = {
+            'total_observations': len(data),
+            'date_range': {
+                'start': data['Date'].min().isoformat(),
+                'end': data['Date'].max().isoformat()
+            },
+            'columns': list(data.columns),
+            'missing_values': data.isnull().sum().to_dict(),
         }
-    }
+        
+        # Add price stats if Close column exists
+        if 'Close' in data.columns:
+            summary['price_stats'] = {
+                'mean': float(data['Close'].mean()),
+                'std': float(data['Close'].std()),
+                'min': float(data['Close'].min()),
+                'max': float(data['Close'].max())
+            }
+        
+        # Add returns stats if Returns column exists
+        if 'Returns' in data.columns:
+            summary['returns_stats'] = {
+                'mean': float(data['Returns'].mean()),
+                'std': float(data['Returns'].std()),
+                'min': float(data['Returns'].min()),
+                'max': float(data['Returns'].max())
+            }
+    except Exception as e:
+        return jsonify({'error': f'Error computing summary statistics: {str(e)}'}), 500
     
     return jsonify(summary)
 
@@ -107,9 +120,14 @@ def get_price_series():
     filtered_data = data.copy()
     
     if start_date:
+        start_date = pd.to_datetime(start_date)
         filtered_data = filtered_data[filtered_data['Date'] >= start_date]
     if end_date:
+        end_date = pd.to_datetime(end_date)
         filtered_data = filtered_data[filtered_data['Date'] <= end_date]
+    
+    if filtered_data.empty:
+        return jsonify({'error': 'No data found in specified date range'}), 400
     
     # Convert to JSON-serializable format
     price_series = {
